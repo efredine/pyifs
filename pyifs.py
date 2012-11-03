@@ -1,7 +1,7 @@
 import random
 import sys
 import argparse
-from math import cos, sin, pi, atan2, sqrt
+from math import cos, sin, pi, atan, atan2, sqrt
 from datetime import datetime
 
 from image import Image
@@ -77,6 +77,18 @@ class Transform(object):
     def __repr__(self):
         return "%s(params=%s)" % (self.__class__.__name__, repr(self.params));
 
+class LinearCenter(Transform):
+    def __init__(self, params={}):
+        super(LinearCenter, self).__init__(params)
+        self.seteither('a', params, random.uniform(-1, 1))
+        self.seteither('b', params, random.uniform(-1, 1))
+        self.seteither('c', params, random.uniform(-1, 1))
+        self.seteither('d', params, random.uniform(-1, 1))
+
+    def transform(self, px, py):
+        return (self.a * px + self.b * py, self.c * px + self.d * py)
+
+
 class Linear(Transform):
     def __init__(self, params={}):
         super(Linear, self).__init__(params)
@@ -84,9 +96,11 @@ class Linear(Transform):
         self.seteither('b', params, random.uniform(-1, 1))
         self.seteither('c', params, random.uniform(-1, 1))
         self.seteither('d', params, random.uniform(-1, 1))
+        self.seteither('e', params, random.uniform(-1, 1))
+        self.seteither('f', params, random.uniform(-1, 1))
              
     def transform(self, px, py):
-        return (self.a * px + self.b * py, self.c * px + self.d * py)
+        return (self.a * px + self.b * py + self.c, self.d * px + self.e * py + self.f)
 
 
 class ComplexTransform(Transform):
@@ -95,9 +109,8 @@ class ComplexTransform(Transform):
     
     def transform(self, px, py):
         z = complex(px, py)
-        z2 = self.f(z)
+        z2 = self.complex_transform(z)
         return z2.real, z2.imag
-
 
 class Moebius(ComplexTransform):
     
@@ -108,7 +121,7 @@ class Moebius(ComplexTransform):
         self.seteither('c', params, random_complex())
         self.seteither('d', params, random_complex())
      
-    def f(self, z):
+    def complex_transform(self, z):
         return (self.a * z + self.b) / (self.c * z + self.d)
 
 class InverseJulia(ComplexTransform):
@@ -119,15 +132,154 @@ class InverseJulia(ComplexTransform):
         theta = 2 * pi * random.random()
         self.seteither('c', params, complex(r * cos(theta), r * sin(theta)))
     
-    def f(self, z):
+    def complex_transform(self, z):
         z2 = self.c - z
         theta = atan2(z2.imag, z2.real) * 0.5
         sqrt_r = random.choice([1, -1]) * ((z2.imag * z2.imag + z2.real * z2.real) ** 0.25)
         return complex(sqrt_r * cos(theta), sqrt_r * sin(theta))
 
+#
+# COMBINE WITH LINEAR
+# The following simple function transformations are best used when wrapped or sequenced with a linear transform.
+#
+class Spherical(Transform):
 
-# CUSTOMIZE by implementing new transforms
+    def transform(self, x, y):
+        r2 = x*x + y*y
+        return x/r2, y/r2
 
+class Sinusoidal(Transform):
+
+    def transform(self, x, y):
+        return sin(x), sin(y)
+        
+class Swirl(Transform):
+
+    def transform(self, x, y):
+        r2 = x * x + y * y
+        return x * sin(r2) - y * cos(r2), x * cos(r2) + y * sin(r2)
+
+class HorseShoe(Transform):
+ 
+    def transform(self, x, y):
+        r = sqrt(x*x + y*y)
+        return 1/r * ((x-y)*(x+y)), 1/r * 2*x*y
+        
+class Polar(Transform):
+    
+    def transform(self, x, y):
+        theta = atan(x/y)
+        r = sqrt(x*x + y*y)
+        return theta, (r - 1)
+        
+class Handkerchief(Transform):
+    
+    def transform(self, x, y):
+        theta = atan(x/y)
+        r = sqrt(x*x + y*y)
+        return r * sin(theta + r), r * cos(theta - r)
+        
+class Heart(Transform):
+    
+    def transform(self, x, y):
+        theta = atan(x/y)
+        r = sqrt(x*x + y*y)
+        return r * sin(theta * r), -1 * r * cos(theta * r)
+        
+class Disc(Transform):
+
+    def transform(self, x, y):
+        theta = atan(x/y)
+        r = sqrt(x*x + y*y)
+        return theta * sin(pi * r), theta * cos(pi * r)
+        
+class Spiral(Transform):
+    
+    def transform(self, x, y):
+        theta = atan(x/y)
+        r = sqrt(x*x + y*y)
+        return 1/r * (cos(theta) + sin(r)), 1/r *(sin(theta) - cos(r))
+
+class Hyperbolic(Transform):
+    
+    def transform(self, x, y):
+        theta = atan(x/y)
+        r = sqrt(x*x + y*y)
+        return  sin(theta)/r, random.choice([1,-1]) * r * cos(theta)
+        
+
+class Diamond(Transform):
+    
+    def transform(self, x, y):
+        theta = atan(x/y)
+        r = sqrt(x*x + y*y)
+        return  2 * sin(theta) * cos(r), 2 * random.choice([1,-1]) * cos(theta) * sin(r)    
+
+class Ex(Transform):
+    
+    def transform(self, x, y):
+        theta = atan(x/y)
+        r = sqrt(x*x + y*y)
+        p0 = sin(theta+r)
+        p1 = cos(theta-r)
+        return  r *(p0*p0*p0 + p1*p1*p1), r*(p0*p0*p0 - p1*p1*p1)
+        
+class Bent(Transform):
+    
+    def transform(self, x, y):
+      if x >= 0 and y >= 0:
+           return x,y
+      elif x < 0 and y >= 0:
+          return 2*x, y
+      elif x >= 0 and y < 0:
+          return x, y/2
+      else:
+          return 2*x, y/2
+
+# PARAMETRIC FUNCTIONS
+# Perspective is useful as a wrapping function.
+class Perspective(Transform):
+    
+    def __init__(self, params={}):
+        super(Perspective, self).__init__(params)
+        self.seteither('p1', params, 2 * pi * random.random()) #angle
+        self.seteither('p2', params, random.uniform(-1, 1)) #distance
+       
+    def transform(self, x, y):
+        coefficient = self.p2 / (self.p2 - y * sin(self.p1))
+        return coefficient * x, coefficient * y * cos(self.p1)
+
+class Rectangle(Transform):
+
+    def __init__(self, params={}):
+        super(Rectangle, self).__init__(params)
+        self.seteither('p1', params, random.uniform(-1, 1)) 
+        self.seteither('p2', params, random.uniform(-1, 1))
+
+    def transform(self, x, y):
+        return (2*int(x/self.p1) + 1)*self.p1 - x, (2*int(y/self.p2) + 1)*self.p2 - y
+ 
+# Sequentially applies transform functions in sequence.
+class Sequence(Transform):
+    def __init__(self, params={}, transforms=[]):
+        super(Sequence, self).__init__(params)
+        self.transforms = transforms
+        
+    def add(self, probability, transform):
+        self.transforms.add((probability, transform))
+        
+    def transform(self, px, py):
+        for (prob, instance) in self.transforms:
+            if prob > random.random():
+                px,py = instance.transform(px,py)
+        return px,py
+        
+    def __repr__(self):
+        return "%s(params=%s, transforms=[\n%s])" % (
+            self.__class__.__name__, 
+            repr(self.params),
+            ',\n'.join(["\t(%s,%s)" % (x, repr(y)) for (x,y) in self.transforms]) )
+        
 class Generator(object):
     def __init__(self, 
             ifs,
@@ -158,7 +310,7 @@ class Generator(object):
     def generate(self):
         random.seed(self.seed)
         for i in range(self.num_points):
-            print "%s%i" % (self.instance, i)
+            # print "%s%i" % (self.instance, i)
             px = random.uniform(-1, 1)
             py = random.uniform(-1, 1)
             r, g, b = 0.0, 0.0, 0.0
@@ -187,19 +339,35 @@ class Generator(object):
             self.num_points,
             self.img_name)    
                 
-#CUSTOMIZE
-TRANSFORM_CHOICES = [Linear, InverseJulia]
+# Class Generators to be used in Transform Choices
+# Wrap a transform in other transforms.  So, for example, form Linear, Moebius, Linear by providing Linear and Moebius as arguments.
+# Provide just one transform to return that transform alone.
+class Wrap(object):
+    def __init__(self, *transforms):
+        self.transforms=transforms
+         
+    def generate(self):
+        if len(self.transforms) == 1:
+            return self.transforms[0]()
+            
+        sequence = []
+        for transform in self.transforms[:-1]:
+            index = len(sequence)/2
+            sequence.insert(index, (1.0, transform()))
+            sequence.insert(index, (1.0, transform()))
+        sequence.insert(len(sequence)/2, (1.0, self.transforms[-1]()))
+        return Sequence(transforms=sequence)
+              
+               
+TRANSFORM_CHOICES = [Wrap(Linear, Perspective, Disc)]
 
 def generate_ifs():
     ifs = IFS()
     for n in range(NUM_TRANSFORMS):
         cls = random.choice(TRANSFORM_CHOICES)
-        ifs.add(cls())
+        ifs.add(cls.generate())
     return ifs
-    
-def read_ifs(ifs_file):
-    return None
-
+      
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--gen", help="Input file containing an IFS generator description.  If no file is provided, an IFS generator is randomly constructed from TRANSFORM_CHOICES.", type=file)
