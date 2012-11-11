@@ -7,13 +7,15 @@ import zlib
 # how much each channel contributes to luminance
 RGB_LUMINANCE = (0.2126, 0.7152, 0.0722)
 
-DISPLAY_LUMINANCE_MAX = 200.0
+DISPLAY_LUMINANCE_MAX = 200.0 # original value was 200.0
+
+DERIVED_CONSTANT = 1.219
 
 # formula from Ward "A Contrast-Based Scalefactor for Luminance Display"
 SCALEFACTOR_NUMERATOR = 1.219 + (DISPLAY_LUMINANCE_MAX * 0.25) ** 0.4
-
-
-GAMMA_ENCODE = 0.45
+SCALEFACTOR_ADJUST = 0.040 # because I like lower contrast images.
+GAMMA_ADJUST = -0.20
+GAMMA_ENCODE = 0.45 + GAMMA_ADJUST # orginal value was 0.45
 
 
 class Image(object):
@@ -52,7 +54,7 @@ class Image(object):
         the given number of iterations.
         """
         ## calculate the log-mean luminance of the image
-
+        
         sum_of_logs = 0.0
 
         for x in range(self.width):
@@ -65,6 +67,8 @@ class Image(object):
                 sum_of_logs += log10(max(lum, 0.0001))
 
         log_mean_luminance = 10.0 ** (sum_of_logs / (self.height * self.width))
+        
+        # log_mean_luminance *= 1000
 
         ## calculate the scalefactor for linear tone-mapping
 
@@ -74,6 +78,9 @@ class Image(object):
             (SCALEFACTOR_NUMERATOR / (1.219 + log_mean_luminance ** 0.4)) ** 2.5
         ) / DISPLAY_LUMINANCE_MAX
 
+        scalefactor *= SCALEFACTOR_ADJUST
+        
+        print scalefactor
         return scalefactor
 
     def display_pixels(self, iterations):
