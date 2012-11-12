@@ -23,6 +23,12 @@ def get_base_name(args):
 
     return os.path.join(target_dir, args.base)
 
+def run_jobs(g):
+    count = multiprocessing.cpu_count()
+    pool = multiprocessing.Pool(processes=count)
+    return pool.map(work, g)
+    
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--dir", help="Optional directory name to use (must exist).")
@@ -33,7 +39,5 @@ if __name__ == '__main__':
     
     base = get_base_name(args)
     
-    count = multiprocessing.cpu_count()
-    pool = multiprocessing.Pool(processes=count)
     g = ('pypy pyifs.py --instance %i --image %s%i.png --desc %s%i.ifs' % (i,base,i,base,i) for i in range(args.runs))
-    print pool.map(work, g)
+    print run_jobs(g)

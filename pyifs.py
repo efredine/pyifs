@@ -64,10 +64,10 @@ class Transform(object):
     
     def seteither(self, name, params, value):
         if params.has_key(name):
-            setattr(self, name, params[name])
+            self.params[name] = params[name]
         else:
-            setattr(self, name, value)
-        self.params[name] = value
+            self.params[name] = value
+        setattr(self, name, self.params[name])
     
     def transform_colour(self, r, g, b):
         r = (self.red + r) / 2
@@ -359,6 +359,7 @@ class Sequence(Transform):
             if prob > random.random():
                 px,py = instance.transform(px,py)
         return px,py
+
                         
 class Generator(object):
 
@@ -456,7 +457,10 @@ class Generator(object):
             'after': self.after
         }
                                              
-TRANSFORM_CHOICES = [Sequence(params={'sequence':[(1.0, Linear()), (1.0, Disc()), (1.0, Perspective())]}), InverseJulia()]
+# TRANSFORM_CHOICES = [Sequence(params={'sequence':[(1.0, Linear()), (1.0, Disc()), (1.0, Perspective())]}), InverseJulia()]
+
+TRANSFORM_CHOICES = [Moebius(), Rectangle(), InverseJulia(), Spherical(), Sinusoidal(), Linear(), Wiener()]
+TRANSFORM_CHOICES = [Linear(), Sinusoidal()]
 
 def generate_ifs():
     ifs = IFS()
@@ -479,7 +483,15 @@ if __name__ == "__main__":
     else:
         print 'Creating randomly selected generator.'
         ifs = generate_ifs()
-        g = Generator(ifs=ifs, img_name=args.image, instance=args.instance, before=[Moebius()], after=[Moebius()])
+        # ifs = IFS()
+        # ifs.add(Moebius())
+        # ifs.add(Rectangle())
+        # ifs.add(InverseJulia())
+        # ifs.add(Spherical())
+        # ifs.add(Sinusoidal())
+        # ifs.add(Linear())
+        # ifs.add(Wiener())
+        g = Generator(ifs=ifs, img_name=args.image, instance=args.instance, before=[Linear()])
     g.generate()
     
     args.desc.write(repr(g))
