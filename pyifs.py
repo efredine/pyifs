@@ -84,6 +84,7 @@ class Transform(object):
     def __repr__(self):
         return "%s(params=%s)" % (self.__class__.__name__, repr(self.params));
 
+# Linear transformations
 class LinearCenter(Transform):
     def __init__(self, params={}):
         super(LinearCenter, self).__init__(params)
@@ -110,6 +111,7 @@ class Linear(Transform):
         return (self.a * px + self.b * py + self.c, self.d * px + self.e * py + self.f)
 
 
+# Complex transformations
 class ComplexTransform(Transform):
     def __init__(self, params={}):
         super(ComplexTransform, self).__init__(params)
@@ -145,6 +147,7 @@ class InverseJulia(ComplexTransform):
         sqrt_r = random.choice([1, -1]) * ((z2.imag * z2.imag + z2.real * z2.real) ** 0.25)
         return complex(sqrt_r * cos(theta), sqrt_r * sin(theta))
 
+# Functions
 class Identity(Transform):
 
     def transform(self, x, y):
@@ -184,57 +187,57 @@ class HorseShoe(Transform):
 class Polar(Transform):
     
     def transform(self, x, y):
-        theta = atan(x/y)
+        theta = atan2(y,x)
         r = sqrt(x*x + y*y)
         return theta, (r - 1)
         
 class Handkerchief(Transform):
     
     def transform(self, x, y):
-        theta = atan(x/y)
+        theta = atan2(y,x)
         r = sqrt(x*x + y*y)
         return r * sin(theta + r), r * cos(theta - r)
         
 class Heart(Transform):
     
     def transform(self, x, y):
-        theta = atan(x/y)
+        theta = atan2(y,x)
         r = sqrt(x*x + y*y)
         return r * sin(theta * r), -1 * r * cos(theta * r)
         
 class Disc(Transform):
 
     def transform(self, x, y):
-        theta = atan(x/y)
+        theta = atan2(y,x)
         r = sqrt(x*x + y*y)
         return theta * sin(pi * r), theta * cos(pi * r)
         
 class Spiral(Transform):
     
     def transform(self, x, y):
-        theta = atan(x/y)
+        theta = atan2(y,x)
         r = sqrt(x*x + y*y)
         return 1/r * (cos(theta) + sin(r)), 1/r *(sin(theta) - cos(r))
 
 class Hyperbolic(Transform):
     
     def transform(self, x, y):
-        theta = atan(x/y)
+        theta = atan2(y,x)
         r = sqrt(x*x + y*y)
-        return  sin(theta)/r, random.choice([1,-1]) * r * cos(theta)
+        return  sin(theta)/r, r * cos(theta)
         
 
 class Diamond(Transform):
     
     def transform(self, x, y):
-        theta = atan(x/y)
+        theta = atan2(y,x)
         r = sqrt(x*x + y*y)
-        return  2 * sin(theta) * cos(r), 2 * random.choice([1,-1]) * cos(theta) * sin(r)    
+        return  2 * sin(theta) * cos(r), 2 * cos(theta) * sin(r)    
 
 class Ex(Transform):
     
     def transform(self, x, y):
-        theta = atan(x/y)
+        theta = atan2(y,x)
         r = sqrt(x*x + y*y)
         p0 = sin(theta+r)
         p1 = cos(theta-r)
@@ -456,7 +459,7 @@ NOISE = [RandomMove(), Wiener(), RandomWalk()]
 # TRANSFORM_CHOICES = [Sequence(params={'sequence':[(1.0, Linear()), (1.0, Disc()), (1.0, Perspective())]}), InverseJulia()]
 
 # TRANSFORM_CHOICES = [Moebius(), Rectangle(), InverseJulia(), Spherical(), Sinusoidal(), Linear(), Wiener()]
-TRANSFORM_CHOICES = [Rectangle(), Swirl(), Sinusoidal()]
+TRANSFORM_CHOICES = [Diamond(), Linear()]
 # TRANSFORM_CHOICES = ALL_TRANSFORMS + NOISE
 
 def generate_ifs():
