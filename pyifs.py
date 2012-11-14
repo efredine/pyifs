@@ -78,7 +78,17 @@ class Transform(object):
     def get_new_transform(self, params={}):
         return self.__class__(params=dict(self.initial_params.items() + params.items()))
         
-    def get_mutated_transform(self, params):
+    def get_mutated_transform(self, percent):
+        if percent == 100:
+            params = self.params
+        elif percent == 0:
+            params = {}
+        else:
+            items = self.params.items()
+            random.shuffle( items )
+            keep = min(percent * len(items) / 100, len(items))
+            params = dict( items[0:keep if keep > 0 else 0] )
+            print "Keeping %s of %s params for %s." % (keep, len(items), self.__class__.__name__)        
         return self.__class__(params=params)
     
     def __repr__(self):
@@ -109,6 +119,43 @@ class Linear(Transform):
              
     def transform(self, px, py):
         return (self.a * px + self.b * py + self.c, self.d * px + self.e * py + self.f)
+
+class Rotate(Transform):
+    def __init__(self, params={}):
+        super(Rotate, self).__init__(params)
+        self.seteither('rotate', params, random.random() * 2 * pi)
+             
+    def transform(self, x, y):
+        theta = atan2(y,x)
+        r = sqrt(x*x + y*y)
+        theta += self.rotate
+        return r * cos(theta), r * sin(theta)
+
+class Translate(Transform):
+    def __init__(self, params={}):
+        super(Translate, self).__init__(params)
+        self.seteither('move_x', params, random.uniform(-1,1))
+        self.seteither('move_y', params, random.uniform(-1,1))
+
+    def transform(self, x, y):
+        return x + self.move_x, y + self.move_y
+
+class Scale(Transform):
+    def __init__(self, params={}):
+        super(Scale, self).__init__(params)
+        self.seteither('scale', params, random.uniform(-1,1))
+
+    def transform(self, x, y):
+        return self.scale * x, self.scale * y
+
+class Flip(Transform):
+    def __init__(self, params={}):
+        super(Flip, self).__init__(params)
+        self.seteither('flip_x', params, random.uniform(-1,1))
+        self.seteither('flip_y', params, random.uniform(-1,1))
+
+    def transform(self, x, y):
+        return self.flip_x * x, self.flip_y * y
 
 
 # Complex transformations
@@ -346,6 +393,12 @@ class Sequence(Transform):
                 px,py = instance.transform(px,py)
         return px,py
 
+    def get_mutated_transform(self, percent):
+        new_sequence = []
+        for (prob, instance) in self.sequence:
+            new_sequence.append( (prob, instance.get_mutated_transform(percent)) )
+        return self.__class__(params={'sequence': new_sequence})
+
                         
 class Generator(object):
 
@@ -456,11 +509,16 @@ ALL_TRANSFORMS = [LinearCenter(), Linear(), Moebius(), InverseJulia(), Identity(
     Diamond(), Ex(), Bent(), Perspective(), Rectangle()]    
     
 NOISE = [RandomMove(), Wiener(), RandomWalk()]                                
-# TRANSFORM_CHOICES = [Sequence(params={'sequence':[(1.0, Linear()), (1.0, Disc()), (1.0, Perspective())]}), InverseJulia()]
 
+MODIFIED = Sequence(params={'sequence':[(1.0, Hyperbolic()), (1.0, Scale()), (1.0, Rotate()), (1.0, Translate())]})
+MODIFIED2 = Sequence(params={'sequence':[(1.0, Sinusoidal()), (1.0, Scale()), (1.0, Rotate()), (1.0, Translate())]})
+MODIFIED3 = Sequence(params={'sequence':[(1.0, Perspective()), (1.0, Scale()), (1.0, Rotate()), (1.0, Translate())]})
+
+# TRANSFORM_CHOICES = [Sequence(params={'sequence':[(1.0, Linear()), (1.0, Disc()), (1.0, Perspective())]}), InverseJulia()]
 # TRANSFORM_CHOICES = [Moebius(), Rectangle(), InverseJulia(), Spherical(), Sinusoidal(), Linear(), Wiener()]
-TRANSFORM_CHOICES = [Diamond(), Linear()]
+TRANSFORM_CHOICES = [MODIFIED, Moebius()]
 # TRANSFORM_CHOICES = ALL_TRANSFORMS + NOISE
+# TRANSFORM_CHOICES = [Linear(), Moebius(), Sinusoidal()]
 
 def generate_ifs():
     ifs = IFS()

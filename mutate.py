@@ -14,15 +14,10 @@ def mutate(l1, args):
     for f1 in l1:
         for i in range(args.variants):
             g1 = pyifs.Generator.from_file(f1)
-            if args.percent != 100:
-                new_transforms = []
-                for (p,t) in g1.ifs.transforms:
-                    params = t.params.items()
-                    random.shuffle( params )
-                    keep = min(args.percent * len(params) / 100, len(params))
-                    new_params = dict( params[0:keep-1] )
-                    new_transforms.append( (p, t.get_mutated_transform(params=new_params)) )
-                g1.ifs.transforms = new_transforms
+            new_transforms = []
+            for (p,t) in g1.ifs.transforms:
+                new_transforms.append( (p, t.get_mutated_transform(args.percent)) )
+            g1.ifs.transforms = new_transforms
             if args.before:
                 g1.before = [pyifs.Linear()]
             if args.after:
