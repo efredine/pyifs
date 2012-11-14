@@ -4,7 +4,7 @@ import argparse
 from math import cos, sin, pi, atan, atan2, sqrt, exp
 from datetime import datetime
 
-from image import Image
+from image import Image, SCALEFACTOR_ADJUST, GAMMA_ADJUST
 
 # CUSTOMIZE
 WIDTH = 1024
@@ -41,10 +41,10 @@ class IFS:
                 return transform
     
     def final_transform(self, px, py):
-        a = 0.5
-        b = 0
-        c = 0
-        d = 1
+        a = 0.5 # 0.5
+        b = 0 # 0
+        c = 0 # 0
+        d = 1.0 # 1.0
         z = complex(px, py)
         z2 = (a * z + b) / (c * z + d)
         return z2.real, z2.imag
@@ -76,7 +76,10 @@ class Transform(object):
         return r, g, b
         
     def get_new_transform(self, params={}):
-        return self.__class__(dict(self.initial_params.items() + params.items()))
+        return self.__class__(params=dict(self.initial_params.items() + params.items()))
+        
+    def get_mutated_transform(self, params):
+        return self.__class__(params=params)
     
     def __repr__(self):
         return "%s(params=%s)" % (self.__class__.__name__, repr(self.params));
@@ -142,10 +145,6 @@ class InverseJulia(ComplexTransform):
         sqrt_r = random.choice([1, -1]) * ((z2.imag * z2.imag + z2.real * z2.real) ** 0.25)
         return complex(sqrt_r * cos(theta), sqrt_r * sin(theta))
 
-#
-# COMBINE WITH LINEAR
-# The following simple function transformations are best used when wrapped or sequenced with a linear transform.
-#
 class Identity(Transform):
 
     def transform(self, x, y):
@@ -274,21 +273,7 @@ class Rectangle(Transform):
         self.seteither('p2', params, random.uniform(-1, 1))
 
     def transform(self, x, y):
-        return (2*int(x/self.p1) + 1)*self.p1 - x, (2*int(y/self.p2) + 1)*self.p2 - y
- 
-# Strange attractors
-
-class Lorenz(Transform):
-    def __init__(self, params={}):
-        super(Rectangle, self).__init__(params)
-        self.seteither('delta', params, float(10)) 
-        self.seteither('rl', params, float(28))
-        self.seteither('hl', params, 1e-3)
-        self.seteither('hl', params, random.uniform(-1,1))
-
-    def transform(self, x, y):
-        return (2*int(x/self.p1) + 1)*self.p1 - x, (2*int(y/self.p2) + 1)*self.p2 - y
-    
+        return (2*int(x/self.p1) + 1)*self.p1 - x, (2*int(y/self.p2) + 1)*self.p2 - y    
     
  
 # Noise injection
@@ -324,8 +309,6 @@ class Wiener(Transform):
         self.sigma = 2.0 ** 2.0/10000
         self.x = 0.0
         self.y = 0.0
-        print self.sigma
-        # self.sigma = 0.01
     
     def transform(self, x, y):
         self.x = random.gauss(0.0, self.sigma)
@@ -381,6 +364,8 @@ class Generator(object):
             seed = generate_seed(), 
             width = WIDTH, 
             height = HEIGHT, 
+            scale=SCALEFACTOR_ADJUST,
+            gamma=GAMMA_ADJUST,
             iterations = ITERATIONS,
             num_points = NUM_POINTS,
             img_name = "test.png",
@@ -397,13 +382,15 @@ class Generator(object):
         self.seed = seed
         self.width = width
         self.height = height
+        self.scale = scale
+        self.gamma = gamma
         self.iterations = iterations
         self.num_points = num_points
         self.img_name =  img_name  
         self.before = before
         self.after = after
         
-        self.img = Image(self.width, self.height)
+        self.img = Image(self.width, self.height, self.scale, self.gamma)
               
     def generate(self):
         random.seed(self.seed)
@@ -433,12 +420,14 @@ class Generator(object):
         self.img.save(self.img_name, max(1, (self.num_points * self.iterations) / (self.height * self.width)))   
              
     def __repr__(self):
-        return "%s(\n%s,\nseed=%s, width=%s, height=%s, iterations=%s, num_points=%s, img_name='%s', before=%s, after=%s)" %(
+        return "%s(\n%s,\nseed=%s, width=%s, height=%s, scale=%s, gamma=%s, iterations=%s, num_points=%s, img_name='%s', before=%s, after=%s)" %(
             self.__class__.__name__,
             repr(self.ifs),
             self.seed,
             self.width,
             self.height,
+            self.scale,
+            self.gamma,
             self.iterations,
             self.num_points,
             self.img_name,
@@ -450,17 +439,25 @@ class Generator(object):
             'seed': self.seed,
             'width': self.width,
             'height': self.height,
+            'scale': self.scale,
+            'gamma': self.gamma,
             'iterations': self.iterations,
             'num_points': self.num_points,
             'img_name': self.img_name,
             'before': self.before,
             'after': self.after
         }
-                                             
+         
+ALL_TRANSFORMS = [LinearCenter(), Linear(), Moebius(), InverseJulia(), Identity(), Swap(), 
+    Spherical(), Sinusoidal(), Swirl(), HorseShoe(), Polar(), Handkerchief(), Heart(), Disc(), Spiral(), Hyperbolic(), 
+    Diamond(), Ex(), Bent(), Perspective(), Rectangle()]    
+    
+NOISE = [RandomMove(), Wiener(), RandomWalk()]                                
 # TRANSFORM_CHOICES = [Sequence(params={'sequence':[(1.0, Linear()), (1.0, Disc()), (1.0, Perspective())]}), InverseJulia()]
 
-TRANSFORM_CHOICES = [Moebius(), Rectangle(), InverseJulia(), Spherical(), Sinusoidal(), Linear(), Wiener()]
-TRANSFORM_CHOICES = [Linear(), Sinusoidal()]
+# TRANSFORM_CHOICES = [Moebius(), Rectangle(), InverseJulia(), Spherical(), Sinusoidal(), Linear(), Wiener()]
+TRANSFORM_CHOICES = [Rectangle(), Swirl(), Sinusoidal()]
+# TRANSFORM_CHOICES = ALL_TRANSFORMS + NOISE
 
 def generate_ifs():
     ifs = IFS()
@@ -472,7 +469,7 @@ def generate_ifs():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--gen", help="Input file containing an IFS generator description.  If no file is provided, an IFS generator is randomly constructed from TRANSFORM_CHOICES.", type=file)
-    parser.add_argument("--desc", help="Output file where description of generated IFS is written.", type=argparse.FileType('w'), default="test.ifs")
+    parser.add_argument("--desc", help="Output file where description of generated IFS is written.", default="test.ifs")
     parser.add_argument("--image", help="Name of image file.", default="test.png")
     parser.add_argument("--instance", help="Instance identifier.")
     args = parser.parse_args()
@@ -491,8 +488,9 @@ if __name__ == "__main__":
         # ifs.add(Sinusoidal())
         # ifs.add(Linear())
         # ifs.add(Wiener())
-        g = Generator(ifs=ifs, img_name=args.image, instance=args.instance, before=[Linear()])
+        g = Generator(ifs=ifs, img_name=args.image, instance=args.instance)
     g.generate()
     
-    args.desc.write(repr(g))
+    desc_file = open(args.desc, 'w')
+    desc_file.write(repr(g))
  

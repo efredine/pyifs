@@ -4,6 +4,7 @@ import argparse
 import os
 
 def work(cmd):
+    print cmd
     return subprocess.call(cmd, shell=True)
 
 def get_base_name(args):

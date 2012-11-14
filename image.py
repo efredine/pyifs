@@ -1,5 +1,5 @@
 from array import array
-from math import log10
+from math import log10, log
 import struct
 import zlib
 
@@ -13,20 +13,23 @@ DERIVED_CONSTANT = 1.219
 
 # formula from Ward "A Contrast-Based Scalefactor for Luminance Display"
 SCALEFACTOR_NUMERATOR = 1.219 + (DISPLAY_LUMINANCE_MAX * 0.25) ** 0.4
-SCALEFACTOR_ADJUST = 0.040 # because I like lower contrast images.
-GAMMA_ADJUST = -0.20
-GAMMA_ENCODE = 0.45 + GAMMA_ADJUST # orginal value was 0.45
+SCALEFACTOR_ADJUST = 1.0 # value like 0.05 works well to retain highlights
+GAMMA_ADJUST = 0.00 # value like -0.20 will adjust overall brightness of the image
+GAMMA_ENCODE = 0.45 # orginal value was 0.45
 
 
 class Image(object):
 
-    def __init__(self, width, height):
+    def __init__(self, width, height, scalefactor_adjust=SCALEFACTOR_ADJUST, gamma_adjust=GAMMA_ADJUST):
         """
         initialize blank image.
         """
         self.width = width
         self.height = height
+        self.scalefactor_adjust = scalefactor_adjust
+        self.gamma_adjust = gamma_adjust
         self.data = array("d", [0]) * (width * height * 3)
+        self.lum_max = 0.0
 
     def _index(self, t):
         x, y, channel = t
@@ -57,6 +60,7 @@ class Image(object):
         
         sum_of_logs = 0.0
 
+        
         for x in range(self.width):
             for y in range(self.height):
                 lum = self[x, y, 0] * RGB_LUMINANCE[0]
@@ -64,6 +68,8 @@ class Image(object):
                 lum += self[x, y, 2] * RGB_LUMINANCE[2]
                 lum /= iterations
 
+                self.lum_max = max(self.lum_max, lum)
+                
                 sum_of_logs += log10(max(lum, 0.0001))
 
         log_mean_luminance = 10.0 ** (sum_of_logs / (self.height * self.width))
@@ -78,9 +84,9 @@ class Image(object):
             (SCALEFACTOR_NUMERATOR / (1.219 + log_mean_luminance ** 0.4)) ** 2.5
         ) / DISPLAY_LUMINANCE_MAX
 
-        scalefactor *= SCALEFACTOR_ADJUST
+        scalefactor *= self.scalefactor_adjust
         
-        print scalefactor
+        # print scalefactor
         return scalefactor
 
     def display_pixels(self, iterations):
@@ -89,9 +95,15 @@ class Image(object):
         gamma-corrected number scaled 0 - 1 (although not clipped to 1).
         """
         scalefactor = self.calculate_scalefactor(iterations)
+                
+        scaled_lum_max = self.lum_max * scalefactor/iterations 
+        c = 1 / log(scaled_lum_max + 1)
+        c2 = 1/(c ** (GAMMA_ENCODE+self.gamma_adjust))
 
         for value in self.data:
-            yield max(value * scalefactor / iterations, 0) ** GAMMA_ENCODE
+            scaled_value = max(value * scalefactor / iterations, 0) 
+            updated_value = c*log10(scaled_value + 1)
+            yield  c2 * updated_value ** (GAMMA_ENCODE + self.gamma_adjust)
 
     def save(self, filename, iterations):
         """
