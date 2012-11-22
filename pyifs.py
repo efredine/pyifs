@@ -1,7 +1,8 @@
 import random
 import sys
 import argparse
-from math import cos, sin, pi, atan, atan2, sqrt, exp
+from math import cos, sin, tan, pi, atan, atan2, sqrt, exp, isnan
+import cmath
 from datetime import datetime
 
 from image import Image, SCALEFACTOR_ADJUST, GAMMA_ADJUST
@@ -12,20 +13,29 @@ HEIGHT = 1024
 ITERATIONS = 10000
 NUM_POINTS = 1000
 
-NUM_TRANSFORMS = 7
+NUM_TRANSFORMS = 23
 
 def random_complex():
     return complex(random.uniform(-1, 1), random.uniform(-1, 1))
     
 def generate_seed():
-    now = datetime.utcnow() - datetime.utcfromtimestamp(0)
-    return (now.days, now.seconds, now.microseconds)
+    # now = datetime.utcnow() - datetime.utcfromtimestamp(0)
+    # return (now.days, now.seconds, now.microseconds)
+    return random.SystemRandom().random()
 
 class IFS:
     
-    def __init__(self, transforms = []):
+    def __init__(self, transforms = [], a=1.0, b=0.0, c=0.0, d=0.5, rotate=0.0, origin=(0.0, 0.0)):
         self.transforms = transforms
         self.total_weight = sum([x for (x,y) in transforms])
+        self.rotate=rotate
+        self.origin=complex(origin[0], origin[1])
+        
+        #final Mondrian transform parameters
+        self.a = a # 0.5 (provides a zoom/scale tranform)
+        self.b = b # 0
+        self.c = c # 0 
+        self.d = d # 1.0
     
     def add(self, transform):
         weight = random.gauss(1, 0.15) * random.gauss(1, 0.15)
@@ -41,13 +51,13 @@ class IFS:
                 return transform
     
     def final_transform(self, px, py):
-        a = 0.5 # 0.5
-        b = 0 # 0
-        c = 0 # 0
-        d = 1.0 # 1.0
-        z = complex(px, py)
-        z2 = (a * z + b) / (c * z + d)
-        return z2.real, z2.imag
+        z = complex(px, py) + self.origin
+        z2 = (self.a * z + self.b) / (self.c * z + self.d)
+        if self.rotate != 0.0:
+            (r,phi) = cmath.polar(z2)
+            phi += self.rotate
+            z2 = cmath.rect(r,phi)
+        return z2.real, z2.imag              
         
     def __repr__(self):
         return "%s([\n%s])" % (self.__class__.__name__, ',\n'.join(["\t(%s,%s)" % (x, repr(y)) for (x,y) in self.transforms]) )
@@ -75,8 +85,11 @@ class Transform(object):
         b = (self.blue + b) / 2
         return r, g, b
         
+    def get_new_class(self, params):
+        return self.__class__(params)
+        
     def get_new_transform(self, params={}):
-        return self.__class__(params=dict(self.initial_params.items() + params.items()))
+        return self.get_new_class(params=dict(self.initial_params.items() + params.items()))
         
     def get_mutated_transform(self, percent):
         if percent == 100:
@@ -88,7 +101,14 @@ class Transform(object):
             random.shuffle( items )
             keep = min(percent * len(items) / 100, len(items))
             params = dict( items[0:keep if keep > 0 else 0] )
-            print "Keeping %s of %s params for %s." % (keep, len(items), self.__class__.__name__)        
+            # print "Keeping %s of %s params for %s." % (keep, len(items), self.__class__.__name__)        
+        return self.get_new_class(params=params)
+        
+    def get_mutated_colour(self):
+        params = self.params
+        del(params['red'])
+        del(params['green'])
+        del(params['blue'])
         return self.__class__(params=params)
     
     def __repr__(self):
@@ -120,10 +140,15 @@ class Linear(Transform):
     def transform(self, px, py):
         return (self.a * px + self.b * py + self.c, self.d * px + self.e * py + self.f)
 
+
 class Rotate(Transform):
-    def __init__(self, params={}):
+    def __init__(self, params={}, rotate_range=(0,2*pi)):
         super(Rotate, self).__init__(params)
-        self.seteither('rotate', params, random.random() * 2 * pi)
+        self.rotate_range = rotate_range
+        self.seteither('rotate', params, random.uniform(self.rotate_range[0], self.rotate_range[1]))
+    
+    def get_new_class(self, params):
+        return self.__class__(params, rotate_range=self.rotate_range)
              
     def transform(self, x, y):
         theta = atan2(y,x)
@@ -141,9 +166,14 @@ class Translate(Transform):
         return x + self.move_x, y + self.move_y
 
 class Scale(Transform):
-    def __init__(self, params={}):
+    def __init__(self, params={}, scale_range=(-1, 1)):
         super(Scale, self).__init__(params)
-        self.seteither('scale', params, random.uniform(-1,1))
+        self.scale_range = scale_range
+        self.seteither('scale', params, random.uniform(self.scale_range[0],self.scale_range[1]))
+        
+    def get_new_class(self, params):
+        return self.__class__(params, scale_range=self.scale_range)
+
 
     def transform(self, x, y):
         return self.scale * x, self.scale * y
@@ -212,12 +242,17 @@ class Spherical(Transform):
     def transform(self, x, y):
         r2 = x*x + y*y
         if r2 == 0: r2 = 1.0
-        return x/r2, y/r2
+        return x/r2 if r2 > 0 else 1, y/r2 if r2 > 0 else 1
 
 class Sinusoidal(Transform):
 
     def transform(self, x, y):
         return sin(x), sin(y)
+        
+class Tangent(Transform):
+    
+    def transform(self, x, y):
+        return sin(x)/cos(y), tan(y)
         
 class Swirl(Transform):
 
@@ -229,7 +264,9 @@ class HorseShoe(Transform):
  
     def transform(self, x, y):
         r = sqrt(x*x + y*y)
-        return 1/r * ((x-y)*(x+y)), 1/r * 2*x*y
+        d1 = r * ((x-y)*(x+y))
+        d2 = r * 2*x*y
+        return 1/d1 if d1 > 0 else 1, 1/d2 if d2 > 0 else 1
         
 class Polar(Transform):
     
@@ -264,14 +301,14 @@ class Spiral(Transform):
     def transform(self, x, y):
         theta = atan2(y,x)
         r = sqrt(x*x + y*y)
-        return 1/r * (cos(theta) + sin(r)), 1/r *(sin(theta) - cos(r))
+        return 1/r * (cos(theta) + sin(r)), 1/(r if r > 0 else 1) *(sin(theta) - cos(r))
 
 class Hyperbolic(Transform):
     
     def transform(self, x, y):
         theta = atan2(y,x)
         r = sqrt(x*x + y*y)
-        return  sin(theta)/r, r * cos(theta)
+        return  sin(theta)/r if r > 0 else 1, r * cos(theta)
         
 
 class Diamond(Transform):
@@ -290,6 +327,13 @@ class Ex(Transform):
         p1 = cos(theta-r)
         return  r *(p0*p0*p0 + p1*p1*p1), r*(p0*p0*p0 - p1*p1*p1)
         
+class Fisheye(Transform):
+    
+    def transform(self, x, y):
+        r = sqrt(x*x + y*y)
+        c = 2/(r+1)
+        return c*y, c*x
+        
 class Bent(Transform):
     
     def transform(self, x, y):
@@ -301,6 +345,14 @@ class Bent(Transform):
           return x, y/2
       else:
           return 2*x, y/2
+          
+class Cross(Transform):
+    
+    def transform(self, x, y):
+        s = (x**2 - y**2)**2
+        s = s if s > 0 else 1
+        s = sqrt(1/s)
+        return s * x, s * y
 
 # PARAMETRIC FUNCTIONS
 # Perspective is useful as a wrapping function.
@@ -315,15 +367,97 @@ class Perspective(Transform):
         coefficient = self.p2 / (self.p2 - y * sin(self.p1))
         return coefficient * x, coefficient * y * cos(self.p1)
 
+class Curl(Transform):
+
+    def __init__(self, params={}):
+        super(Curl, self).__init__(params)
+        self.seteither('p1', params, random.random()) 
+        self.seteither('p2', params, random.random())
+
+    def transform(self, x, y):
+        t1 = 1 + self.p1 * x + self.p2*(x*x - y*y)
+        t2 = self.p1*y * 2*self.p2*x*y
+        c = 1/(t1*t1 + t2*t2)
+        return c * (x*t1 + y*t2), c*(y*t1 - x*t2)
+
+
 class Rectangle(Transform):
 
     def __init__(self, params={}):
         super(Rectangle, self).__init__(params)
         self.seteither('p1', params, random.uniform(-1, 1)) 
-        self.seteither('p2', params, random.uniform(-1, 1))
+        self.seteither('p2', params, random.uniform(-1, 1))        
 
     def transform(self, x, y):
-        return (2*int(x/self.p1) + 1)*self.p1 - x, (2*int(y/self.p2) + 1)*self.p2 - y    
+        return (2*int(x/self.p1) + 1)*self.p1 - x, (2*int(y/self.p2) + 1)*self.p2 - y     
+
+    
+class Rays(Transform):
+
+    def __init__(self, params={}):
+        super(Rays, self).__init__(params)
+        self.seteither('rays', params, random.random()) 
+
+    def transform(self, x, y):
+        r2 = x*x + y*y
+        coefficient = self.rays * tan( random.random()*pi*self.rays ) / (r2 if r2 > 0 else 1.0)
+        coefficient = 10.0 if isnan(coefficient) or coefficient > 10.0 else coefficient
+        coefficient = -10.0 if coefficient < -10.0 else coefficient
+        return  coefficient * cos(x), coefficient * sin(y)
+
+class Blade(Transform):
+
+    def __init__(self, params={}):
+        super(Blade, self).__init__(params)
+        self.seteither('blade', params, random.random()) 
+
+    def transform(self, x, y):
+        r = sqrt(x*x + y*y)
+        p = random.random()
+        return x * ( cos(p*r*self.blade) + sin(p*r*self.blade) ), x * (cos(p*r*self.blade) - sin(p*r*self.blade))
+        
+class PDJ(Transform):
+    
+    def __init__(self, params={}):
+         super(PDJ, self).__init__(params)
+         self.seteither('pdj_p1', params, random.uniform(-1, 1)) 
+         self.seteither('pdj_p2', params, random.uniform(-1, 1)) 
+         self.seteither('pdj_p3', params, random.uniform(-1, 1)) 
+         self.seteither('pdj_p4', params, random.uniform(-1, 1)) 
+
+    def transform(self, x, y):
+        return sin(self.pdj_p1 * y) - cos(self.pdj_p2 * x), sin(self.pdj_p3 * x) - cos(self.pdj_p4 * y)
+        
+class Waves(Transform):
+    
+    def __init__(self, params={}):
+         super(Waves, self).__init__(params)
+         self.seteither('wave_b', params, random.uniform(-1, 1)) 
+         self.seteither('wave_c', params, random.uniform(-1, 1)) 
+         self.seteither('wave_e', params, random.uniform(-1, 1)) 
+         self.seteither('wave_f', params, random.uniform(-1, 1)) 
+
+    def transform(self, x, y):
+        return x + self.wave_b * sin(y/self.wave_c**2), y + self.wave_e * sin(x/self.wave_f**2)
+
+#
+class Fan2(Transform):
+    
+    def __init__(self, params={}):
+         super(Fan2, self).__init__(params)
+         p1 = pi * (random.random())**2
+         self.seteither('fan_p1', params, p1 if p1 > 0 else 1)
+         self.seteither('fan_p2', params, random.random()) 
+
+    def transform(self, x, y):
+        theta = atan2(y,x)
+        r = sqrt(x*x + y*y)
+        t = theta + self.fan_p2 - self.fan_p1 * int(2*theta*self.fan_p2/self.fan_p1)
+        
+        if t > self.fan_p1/2:
+            return r * sin(theta - self.fan_p1/2), r * cos(theta - self.fan_p1/2)
+        else:
+            return r * sin(theta + self.fan_p1/2), r * sin(theta + self.fan_p1/2)
     
  
 # Noise injection
@@ -331,6 +465,11 @@ class RandomMove(Transform):
     
     def transform(self, x, y):
         return random.uniform(-2, 2), random.uniform(-2, 2)
+
+class Square(Transform):
+
+    def transform(self, x, y):
+        return random.random() - 0.5, random.random() - 0.5
 
 class TriangularMove(Transform):
 
@@ -471,7 +610,8 @@ class Generator(object):
                 x = int((fx + 1) * self.width / 2)
                 y = int((fy + 1) * self.height / 2)
 
-                self.img.add_radiance(x, y, [r, g, b])  
+                if j > 20:
+                    self.img.add_radiance(x, y, [r, g, b])  
                           
         self.img.save(self.img_name, max(1, (self.num_points * self.iterations) / (self.height * self.width)))   
              
@@ -506,19 +646,47 @@ class Generator(object):
          
 ALL_TRANSFORMS = [LinearCenter(), Linear(), Moebius(), InverseJulia(), Identity(), Swap(), 
     Spherical(), Sinusoidal(), Swirl(), HorseShoe(), Polar(), Handkerchief(), Heart(), Disc(), Spiral(), Hyperbolic(), 
-    Diamond(), Ex(), Bent(), Perspective(), Rectangle()]    
+    Diamond(), Ex(), Bent(), Perspective(), Rectangle(), Curl(), Rays(), Blade(), Waves(), Fisheye(), PDJ(), Cross()]    
     
-NOISE = [RandomMove(), Wiener(), RandomWalk()]                                
+NOISE = [RandomMove(), Wiener(), RandomWalk(), Square()]                                
 
-MODIFIED = Sequence(params={'sequence':[(1.0, Hyperbolic()), (1.0, Scale()), (1.0, Rotate()), (1.0, Translate())]})
-MODIFIED2 = Sequence(params={'sequence':[(1.0, Sinusoidal()), (1.0, Scale()), (1.0, Rotate()), (1.0, Translate())]})
-MODIFIED3 = Sequence(params={'sequence':[(1.0, Perspective()), (1.0, Scale()), (1.0, Rotate()), (1.0, Translate())]})
+MODIFIED = Sequence(params={'sequence':[(1.0, Rectangle()), (1.0, Scale()), (1.0, Translate())]})
+MODIFIED2 = Sequence(params={'sequence':[(1.0, Fan2()), (1.0, Translate())]})
+MODIFIED3 = Sequence(params={'sequence':[(1.0, Spherical()), (1.0, Translate()), (1.0, Rotate()), (1.0, Scale())]})
+MODIFIED4 = Sequence(params={'sequence':[(1.0, Curl()), (1.0, Translate()), (1.0, Rotate()), (1.0, Scale())]})
+
+SINE_MOD = Sequence(params={'sequence':[(1.0, Sinusoidal()), (1.0, Rotate(params={'rotate': 2 * pi * 45 / 60}))]})
+SINE_MOD2 = Sequence(params={'sequence':[(1.0, Sinusoidal()), (1.0, Translate(params={'move_x': -0.5, 'move_y': -0.5}))]})
+SINE_MOD3 = Sequence(params={'sequence':[(1.0, Sinusoidal()), (1.0, Flip(params={'flip_x': 0.5, 'flip_y': 0.5}))]})
 
 # TRANSFORM_CHOICES = [Sequence(params={'sequence':[(1.0, Linear()), (1.0, Disc()), (1.0, Perspective())]}), InverseJulia()]
-# TRANSFORM_CHOICES = [Moebius(), Rectangle(), InverseJulia(), Spherical(), Sinusoidal(), Linear(), Wiener()]
-TRANSFORM_CHOICES = [MODIFIED, Moebius()]
-# TRANSFORM_CHOICES = ALL_TRANSFORMS + NOISE
-# TRANSFORM_CHOICES = [Linear(), Moebius(), Sinusoidal()]
+# TRANSFORM_CHOICES = [PDJ(), Moebius()]
+# TRANSFORM_CHOICES = [MODIFIED, Moebius()]
+# TRANSFORM_CHOICES = ALL_TRANSFORMS
+# TRANSFORM_CHOICES = [Linear(), Cross(), MODIFIED, Rectangle(), Bent(), MODIFIED2]
+# TRANSFORM_CHOICES = [Linear(), Fan2()]
+# TRANSFORM_CHOICES = [MODIFIED3, MODIFIED4, MODIFIED2, Wiener()]
+MODIFIED5 = Sequence(params={'sequence':[(1.0, Blade()), (1.0, Translate()), (1.0, Rotate()), (1.0, Scale())]})
+
+CHOICE1 = Sequence(params={'sequence':[(1.0, Rectangle()), (1.0, MODIFIED), (1.0, MODIFIED)]})
+CHOICE1B = Sequence(params={'sequence':[(1.0, MODIFIED), (1.0, MODIFIED)]})
+CHOICE2 = Sequence(params={'sequence':[(1.0, Rectangle()), (1.0, MODIFIED)]})
+CHOICE3 = Sequence(params={'sequence':[(1.0, Rectangle())]})
+
+VERTICAL = Linear(params={'a': 0.0, 'b': 0.0, 'd': 0.0})
+HORIZONTAL = Linear(params={'b': 0.0, 'd': 0.0, 'e': 0})
+VRECT = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rectangle())]})
+HRECT = Sequence(params={'sequence':[(1.0, HORIZONTAL), (1.0, Rectangle())]})
+STEEP1 = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(params={'rotate': 0.5/360*2*pi}))]})
+STEEP2 = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(params={'rotate': 1.0/360*2*pi}))]})
+STEEP3 = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(params={'rotate': 1.5/360*2*pi}))]})
+STEEP4 = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(params={'rotate': 2.0/360*2*pi}))]})
+STEEP = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(rotate_range=(0.5/360*2*pi, 2.5/360*2*pi))), (1.0, Scale(scale_range=(0.05,0.6)))]})
+# STEEP = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate())]})
+TRANSFORM_CHOICES = [STEEP, STEEP, STEEP, CHOICE1, CHOICE1B, CHOICE2, CHOICE3,  CHOICE1, CHOICE1B, CHOICE2, CHOICE3]
+
+M1 = Sequence(params={'sequence':[(1.0, PDJ()), (1.0, Scale()), (1.0, Translate())]})
+
 
 def generate_ifs():
     ifs = IFS()
@@ -548,7 +716,7 @@ if __name__ == "__main__":
         # ifs.add(Spherical())
         # ifs.add(Sinusoidal())
         # ifs.add(Linear())
-        # ifs.add(Wiener())
+        # ifs.add(RandomMove())
         g = Generator(ifs=ifs, img_name=args.image, instance=args.instance)
     g.generate()
     

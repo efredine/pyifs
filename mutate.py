@@ -14,14 +14,15 @@ def mutate(l1, args):
     for f1 in l1:
         for i in range(args.variants):
             g1 = pyifs.Generator.from_file(f1)
-            new_transforms = []
-            for (p,t) in g1.ifs.transforms:
-                new_transforms.append( (p, t.get_mutated_transform(args.percent)) )
-            g1.ifs.transforms = new_transforms
+            g1.ifs.transforms = [(p, t.get_mutated_transform(args.percent) ) for (p,t) in g1.ifs.transforms]
             if args.before:
                 g1.before = [pyifs.Linear()]
+            else:
+                g1.before = [t.get_mutated_transform(args.percent) for t in g1.before]
             if args.after:
                 g1.after = [pyifs.Linear(params={'c':0.0, 'f':0.0})]
+            else:
+                g1.after = [t.get_mutated_transform(args.percent) for t in g1.after]
             mutant_name = get_mutant_name(f1, args.suffix, i)
             g1.img_name = os.path.join(args.output_dir, mutant_name + '.png')
             

@@ -2,7 +2,7 @@ from array import array
 from math import log10, log
 import struct
 import zlib
-
+import random
 
 # how much each channel contributes to luminance
 RGB_LUMINANCE = (0.2126, 0.7152, 0.0722)
@@ -28,7 +28,7 @@ class Image(object):
         self.height = height
         self.scalefactor_adjust = scalefactor_adjust
         self.gamma_adjust = gamma_adjust
-        self.data = array("d", [0]) * (width * height * 3)
+        self.data = array("d", [0]) * (width * height * 3)        
         self.lum_max = 0.0
 
     def _index(self, t):
