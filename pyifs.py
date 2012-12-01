@@ -6,6 +6,7 @@ import cmath
 from datetime import datetime
 
 from image import Image, SCALEFACTOR_ADJUST, GAMMA_ADJUST
+import colorsys
 
 # CUSTOMIZE
 WIDTH = 1024
@@ -13,7 +14,7 @@ HEIGHT = 1024
 ITERATIONS = 10000
 NUM_POINTS = 1000
 
-NUM_TRANSFORMS = 23
+NUM_TRANSFORMS =   17
 
 def random_complex():
     return complex(random.uniform(-1, 1), random.uniform(-1, 1))
@@ -29,7 +30,8 @@ class IFS:
         self.transforms = transforms
         self.total_weight = sum([x for (x,y) in transforms])
         self.rotate=rotate
-        self.origin=complex(origin[0], origin[1])
+        self.origin=origin
+        self.origin_complex = complex(origin[0], origin[1])
         
         #final Mondrian transform parameters
         self.a = a # 0.5 (provides a zoom/scale tranform)
@@ -51,16 +53,30 @@ class IFS:
                 return transform
     
     def final_transform(self, px, py):
-        z = complex(px, py) + self.origin
+        z = complex(px, py) + self.origin_complex
         z2 = (self.a * z + self.b) / (self.c * z + self.d)
         if self.rotate != 0.0:
             (r,phi) = cmath.polar(z2)
             phi += self.rotate
             z2 = cmath.rect(r,phi)
         return z2.real, z2.imag              
+
+
+    def config_parameters(self):
+        return "a=%s, b=%s, c=%s, d=%s, rotate=%s, origin=%s" % (
+            repr(self.a),
+            repr(self.b),
+            repr(self.c),
+            repr(self.d),
+            repr(self.rotate),
+            repr(self.origin)
+        )
         
     def __repr__(self):
-        return "%s([\n%s])" % (self.__class__.__name__, ',\n'.join(["\t(%s,%s)" % (x, repr(y)) for (x,y) in self.transforms]) )
+        return "%s([\n%s], \n%s)" % (self.__class__.__name__, 
+                                ',\n'.join(["\t(%s,%s)" % (x, repr(y)) for (x,y) in self.transforms]),
+                                self.config_parameters() 
+        )
 
 
 class Transform(object):
@@ -68,9 +84,24 @@ class Transform(object):
     def __init__(self, params={}):
         self.params = {}
         self.initial_params = params
-        self.seteither('red', params, random.random())
-        self.seteither('green', params, random.random())
-        self.seteither('blue', params, random.random())
+        self.seteither('red', params, random.uniform(0, 1))
+        self.seteither('green', params, random.uniform(0, 1))
+        self.seteither('blue', params, random.uniform(0, 1))
+        # if random.choice([True,False]):
+        #     h = random.uniform(0.0/360, 60.0/360)
+        # else:
+        #     h = random.uniform(180.0/360, 240.0/360)
+        # h = random.uniform(0.0,1.0)
+        # s = random.uniform(0.0,1.0)
+        # l = random.uniform(0.0,1.0)
+        # r,g,b = colorsys.hls_to_rgb(h,l,s)
+        # h = random.random()
+        # r,g,b = colorsys.hls_to_rgb(h,l,s)
+        
+        # self.seteither('red', params, r)
+        # self.seteither('green', params, g)
+        # self.seteither('blue', params, b)
+        
     
     def seteither(self, name, params, value):
         if params.has_key(name):
@@ -80,13 +111,13 @@ class Transform(object):
         setattr(self, name, self.params[name])
     
     def transform_colour(self, r, g, b):
-        r = (self.red + r) / 2
-        g = (self.green + g) / 2
-        b = (self.blue + b) / 2
+        r = (self.red + r) / 2 
+        g = (self.green + g) / 2 
+        b = (self.blue + b) / 2 
         return r, g, b
         
     def get_new_class(self, params):
-        return self.__class__(params)
+        return self.__class__(params, **self.other_parameters())
         
     def get_new_transform(self, params={}):
         return self.get_new_class(params=dict(self.initial_params.items() + params.items()))
@@ -110,9 +141,14 @@ class Transform(object):
         del(params['green'])
         del(params['blue'])
         return self.__class__(params=params)
-    
+
+    def other_parameters(self):
+        return {}
+
     def __repr__(self):
-        return "%s(params=%s)" % (self.__class__.__name__, repr(self.params));
+        d = self.other_parameters()
+        others = ["%s=%s" % (k, repr(v)) for k,v in d.items()]
+        return "%s(params=%s, %s)" % (self.__class__.__name__, repr(self.params), ','.join(others));
 
 # Linear transformations
 class LinearCenter(Transform):
@@ -156,6 +192,11 @@ class Rotate(Transform):
         theta += self.rotate
         return r * cos(theta), r * sin(theta)
 
+    def other_parameters(self):
+        d = super(Rotate, self).other_parameters()
+        d['rotate_range'] = self.rotate_range
+        return d
+
 class Translate(Transform):
     def __init__(self, params={}):
         super(Translate, self).__init__(params)
@@ -174,9 +215,13 @@ class Scale(Transform):
     def get_new_class(self, params):
         return self.__class__(params, scale_range=self.scale_range)
 
-
     def transform(self, x, y):
         return self.scale * x, self.scale * y
+
+    def other_parameters(self):
+        d = super(Scale, self).other_parameters()
+        d['scale_range'] = self.scale_range
+        return d
 
 class Flip(Transform):
     def __init__(self, params={}):
@@ -345,6 +390,22 @@ class Bent(Transform):
           return x, y/2
       else:
           return 2*x, y/2
+
+class BentParams(Transform):
+
+    def __init__(self, params={}):
+        super(BentParams, self).__init__(params)
+        self.seteither('bend', params, random.uniform(1,3)) 
+
+    def transform(self, x, y):
+        if x >= 0 and y >= 0:
+             return x,y
+        elif x < 0 and y >= 0:
+            return self.bend*x, y
+        elif x >= 0 and y < 0:
+            return x, y/self.bend
+        else:
+            return self.bend*x, y/self.bend
           
 class Cross(Transform):
     
@@ -391,6 +452,18 @@ class Rectangle(Transform):
     def transform(self, x, y):
         return (2*int(x/self.p1) + 1)*self.p1 - x, (2*int(y/self.p2) + 1)*self.p2 - y     
 
+class RectangleSkip(Transform):
+
+    def __init__(self, params={}):
+        super(RectangleSkip, self).__init__(params)
+        self.seteither('p1', params, random.uniform(-1, 1)) 
+        self.seteither('p2', params, random.uniform(-1, 1))     
+        self.seteither('x_skip', params, random.randint(1,3)) 
+        self.seteither('y_skip', params, random.randint(1,3))
+        
+    def transform(self, x, y):
+        return (self.x_skip*int(x/self.p1) + 1)*self.p1 - x, (self.y_skip*int(y/self.p2) + 1)*self.p2 - y     
+
     
 class Rays(Transform):
 
@@ -415,6 +488,16 @@ class Blade(Transform):
         r = sqrt(x*x + y*y)
         p = random.random()
         return x * ( cos(p*r*self.blade) + sin(p*r*self.blade) ), x * (cos(p*r*self.blade) - sin(p*r*self.blade))
+
+class MadeUp(Transform):
+
+    def __init__(self, params={}):
+        super(MadeUp, self).__init__(params)
+        self.seteither('madeup', params, random.random()) 
+
+    def transform(self, x, y):
+        r = sqrt(x*x + y*y)
+        return x * ( cos(r*self.madeup) + sin(r*self.madeup) ), x * (cos(r*self.madeup) - sin(r*self.madeup))
         
 class PDJ(Transform):
     
@@ -520,8 +603,9 @@ class RandomWalk(Transform):
 # Each transform has a probability with which it should be applied - note that all functions have a chance to
 # run each time this transform is run and if they all have prob = 1.0 they will always all run.
 class Sequence(Transform):
-    def __init__(self, params={}):
+    def __init__(self, params={}, colour_weight=1.0):
         super(Sequence, self).__init__(params)
+        self.colour_weight = colour_weight
         sequence = [(prob, t.get_new_transform()) for (prob, t) in params['sequence']]
         self.params['sequence'] = sequence
         setattr(self, 'sequence', sequence)
@@ -538,6 +622,17 @@ class Sequence(Transform):
             new_sequence.append( (prob, instance.get_mutated_transform(percent)) )
         return self.__class__(params={'sequence': new_sequence})
 
+    def transform_colour(self, r, g, b):
+        r = (self.red + r) / 2 * self.colour_weight
+        g = (self.green + g) / 2 * self.colour_weight
+        b = (self.blue + b) / 2  * self.colour_weight
+        return r, g, b
+
+    def other_parameters(self):
+        d = super(Sequence, self).other_parameters()
+        d['colour_weight'] = self.colour_weight
+        return d
+ 
                         
 class Generator(object):
 
@@ -681,11 +776,70 @@ STEEP1 = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(params={'rot
 STEEP2 = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(params={'rotate': 1.0/360*2*pi}))]})
 STEEP3 = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(params={'rotate': 1.5/360*2*pi}))]})
 STEEP4 = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(params={'rotate': 2.0/360*2*pi}))]})
-STEEP = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(rotate_range=(0.5/360*2*pi, 2.5/360*2*pi))), (1.0, Scale(scale_range=(0.05,0.6)))]})
+STEEP = Sequence(colour_weight=0.01, 
+    params={'sequence':
+            [(1.0, VERTICAL), (1.0, Rotate(rotate_range=(0.5/360*2*pi, 2.5/360*2*pi))), (1.0, Scale(scale_range=(0.05,0.6)))],
+        'red': 0.75,
+        'green': 0.75,
+        'blue': 0.75
+    })
 # STEEP = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate())]})
-TRANSFORM_CHOICES = [STEEP, STEEP, STEEP, CHOICE1, CHOICE1B, CHOICE2, CHOICE3,  CHOICE1, CHOICE1B, CHOICE2, CHOICE3]
+RayMod = Sequence(colour_weight=0.75, params={'sequence':[(1.0, Rays()), (1.0, Rotate())]})
+# TRANSFORM_CHOICES = [STEEP, STEEP, STEEP, CHOICE1, CHOICE1B, CHOICE2, CHOICE3,  CHOICE1, CHOICE1B, CHOICE2, CHOICE3]
 
 M1 = Sequence(params={'sequence':[(1.0, PDJ()), (1.0, Scale()), (1.0, Translate())]})
+
+STEEP5 = Sequence(#colour_weight=0.1,
+    params={'sequence':
+            [(1.0, VERTICAL), (1.0, Rotate(rotate_range=(-2.5/360*2*pi, 2.5/360*2*pi))), (1.0, Scale(scale_range=(0.05,0.6)))]
+        # 'red': 0.75,
+        # 'green': 0.75,
+        # 'blue': 0.75
+    })
+#TRANSFORM_CHOICES = [STEEP5, STEEP5, STEEP5, CHOICE1, CHOICE1B, CHOICE2, CHOICE3,  CHOICE1, CHOICE1B, CHOICE2, CHOICE3, Swap(), Swap()]
+
+SLAT = Sequence(
+    params={'sequence':
+            [(1.0, HORIZONTAL), (1.0, Rotate(rotate_range=(-21.0/360*2*pi, -23.0/360*2*pi))), (1.0, Scale(scale_range=(0.05,0.6)))]
+        # 'red': 0.25,
+        # 'green': 0.25,
+        # 'blue': 0.25
+    })
+
+#TRANSFORM_CHOICES = [SLAT, SLAT, STEEP5, STEEP5, CHOICE1B, CHOICE2, CHOICE3, CHOICE1B, CHOICE2, CHOICE3, CHOICE1B, CHOICE2, CHOICE3, CHOICE1B, CHOICE2, CHOICE3]
+HS = Sequence(params={'sequence':[(1.0, Rectangle()), (1.0, Scale()), (1.0, Translate()), (1.0, Rotate(rotate_range=(-11.0/360*2*pi, 11.0/360*2*pi)))]})
+HS2 = Sequence(params={'sequence':[(1.0, HS), (1.0, HS)]})
+
+# TRANSFORM_CHOICES = [STEEP5, HS, HS, HS, HS2, Swap()]
+XXY = Sequence(params={'sequence':[(1.0, InverseJulia()), (1.0, Scale(scale_range=(0.1, 1.0)))]})
+YYW = Sequence(params={'sequence':[(1.0, Waves()), (1.0, Scale(scale_range=(0.1, 0.3))), (1.0, Translate())]})
+YYX = Sequence(params={'sequence':[(1.0, Curl()), (1.0, Scale(scale_range=(0.1, 1.0))), (1.0, Translate())]})
+YYY = Sequence(params={'sequence':[(1.0, Sinusoidal()), (1.0, Scale(scale_range=(0.1, 1.0))), (1.0, Translate())]})
+YYZ = Sequence(params={'sequence':[(1.0, Spherical()), (1.0, Scale(scale_range=(0.1, 1.0))), (1.0, Translate())]})
+XYZ = Sequence(params={'sequence':[(1.0, YYZ), (1.0, Disc())]})
+ZYX = Sequence(params={'sequence':[(1.0, XXY), (1.0, Waves()), (1.0, Translate())]})
+# TRANSFORM_CHOICES = [CHOICE1, CHOICE1B, CHOICE2, CHOICE3, YYW, YYX, YYY, YYZ]
+# TRANSFORM_CHOICES = [VERTICAL, VERTICAL, VERTICAL, CHOICE2, YYW, YYW, YYY, YYY]
+
+# XXY = Sequence(params={'sequence':[(1.0, Spherical()), (1.0, Scale(scale_range=(0.25, 0.50)))]})
+# XYZ = Sequence(params={'sequence':[(1.0, Perspective()), (1.0, XXY), (1.0, Translate())]})
+# X1 = Sequence(params={'sequence':[(1.0, Disc()), (1.0, Translate())]})
+# X2 = Sequence(params={'sequence':[(1.0, Curl()), (1.0, Translate())]})
+# ATT_WAVE = Sequence( colour_weight=0.1,
+#     params={'sequence':
+#             [(1.0, Waves())]
+#         # 'red': 0.25,
+#         # 'green': 0.25,
+#         # 'blue': 0.25
+#     })
+
+SKIPMOD = Sequence(params={'sequence':[(1.0, RectangleSkip()), (1.0, Scale()), (1.0, Translate())]})
+SKIP1 = Sequence(params={'sequence':[(1.0, RectangleSkip()), (1.0, SKIPMOD), (1.0, SKIPMOD)]})
+SKIP2 = Sequence(params={'sequence':[(1.0, SKIPMOD), (1.0, SKIPMOD)]})
+SKIP3 = Sequence(params={'sequence':[(1.0, RectangleSkip()), (1.0, SKIPMOD)]})
+
+BPX = Sequence(params={'sequence':[(1.0, BentParams()), (1.0, Translate())]})
+TRANSFORM_CHOICES = [RectangleSkip(), SKIP1, SKIP2, SKIP3, BentParams(), BentParams()]
 
 
 def generate_ifs():
@@ -717,7 +871,7 @@ if __name__ == "__main__":
         # ifs.add(Sinusoidal())
         # ifs.add(Linear())
         # ifs.add(RandomMove())
-        g = Generator(ifs=ifs, img_name=args.image, instance=args.instance)
+        g = Generator(ifs=ifs, img_name=args.image, instance=args.instance)#, after=[Perspective(params={'p1': 33.0/360.0*2*pi, 'p2': 0.1})])
     g.generate()
     
     desc_file = open(args.desc, 'w')

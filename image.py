@@ -28,7 +28,13 @@ class Image(object):
         self.height = height
         self.scalefactor_adjust = scalefactor_adjust
         self.gamma_adjust = gamma_adjust
-        self.data = array("d", [0]) * (width * height * 3)        
+        self.data = array("d", [0]) * (width * height * 3)
+        
+        # for i in range(0, width*height*3, 3):
+        #     #r,g,b
+        #     self.data[i+0] = 0.0
+        #     self.data[i+1] = 2.0
+        #     self.data[i+2] = 3.0
         self.lum_max = 0.0
 
     def _index(self, t):
