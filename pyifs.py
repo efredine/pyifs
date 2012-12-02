@@ -7,6 +7,7 @@ from datetime import datetime
 
 from image import Image, SCALEFACTOR_ADJUST, GAMMA_ADJUST
 import colorsys
+from palette import Palette
 
 # CUSTOMIZE
 WIDTH = 1024
@@ -84,9 +85,12 @@ class Transform(object):
     def __init__(self, params={}):
         self.params = {}
         self.initial_params = params
-        self.seteither('red', params, random.uniform(0, 1))
-        self.seteither('green', params, random.uniform(0, 1))
-        self.seteither('blue', params, random.uniform(0, 1))
+        self.seteither('palette', params, Palette())
+        red, green, blue = self.palette.get_rgb_choice()
+        self.seteither('red', params, red)
+        self.seteither('green', params, green)
+        self.seteither('blue', params, blue)
+
         # if random.choice([True,False]):
         #     h = random.uniform(0.0/360, 60.0/360)
         # else:
@@ -98,9 +102,6 @@ class Transform(object):
         # h = random.random()
         # r,g,b = colorsys.hls_to_rgb(h,l,s)
         
-        # self.seteither('red', params, r)
-        # self.seteither('green', params, g)
-        # self.seteither('blue', params, b)
         
     
     def seteither(self, name, params, value):
@@ -135,13 +136,23 @@ class Transform(object):
             # print "Keeping %s of %s params for %s." % (keep, len(items), self.__class__.__name__)        
         return self.get_new_class(params=params)
         
-    def get_mutated_colour(self):
+    def get_mutated_colour(self, palette=None):
         params = self.params
         del(params['red'])
         del(params['green'])
         del(params['blue'])
+        if palette:
+            params['palette'] = palette
         return self.__class__(params=params)
-
+        
+    def get_colour(self):
+        return self.params['red'], self.params['green'], self.params['blue']
+        
+    def set_colour(self, r, g, b):
+        self.params['red'] = r
+        self.params['green'] = g
+        self.params['blue'] = b
+        
     def other_parameters(self):
         return {}
 
