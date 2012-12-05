@@ -15,7 +15,7 @@ HEIGHT = 1024
 ITERATIONS = 10000
 NUM_POINTS = 1000
 
-NUM_TRANSFORMS =   17
+NUM_TRANSFORMS =  7
 
 def random_complex():
     return complex(random.uniform(-1, 1), random.uniform(-1, 1))
@@ -300,6 +300,15 @@ class Spherical(Transform):
         if r2 == 0: r2 = 1.0
         return x/r2 if r2 > 0 else 1, y/r2 if r2 > 0 else 1
 
+class Spherical2(Transform):
+
+    def transform(self, x, y):
+        r2 = x*x + y*y
+        if r2 == 0: r2 = 1.0
+        # r2 /= 10
+        return x/r2 + int(x*10)/10.0, y/r2 + int(y*10)/10.0
+
+
 class Sinusoidal(Transform):
 
     def transform(self, x, y):
@@ -417,6 +426,26 @@ class BentParams(Transform):
             return x, y/self.bend
         else:
             return self.bend*x, y/self.bend
+            
+class BentSuper(Transform):
+
+    def __init__(self, params={}):
+        super(BentSuper, self).__init__(params)
+        self.seteither('bend1', params, random.uniform(2,3)) 
+        self.seteither('bend2', params, random.uniform(2,3)) 
+        self.seteither('bend3', params, random.uniform(2,3)) 
+        self.seteither('bend4', params, random.uniform(2,3)) 
+
+    def transform(self, x, y):
+        if x >= 0 and y >= 0:
+            return self.bend1*y, x/self.bend1
+        elif x < 0 and y >= 0:
+            return self.bend2*x, y
+        elif x >= 0 and y < 0:
+            return x, y/self.bend3
+        else:
+            return self.bend4*x, y/self.bend4
+
           
 class Cross(Transform):
     
@@ -484,9 +513,9 @@ class Rays(Transform):
 
     def transform(self, x, y):
         r2 = x*x + y*y
-        coefficient = self.rays * tan( random.random()*pi*self.rays ) / (r2 if r2 > 0 else 1.0)
-        coefficient = 10.0 if isnan(coefficient) or coefficient > 10.0 else coefficient
-        coefficient = -10.0 if coefficient < -10.0 else coefficient
+        if r2 == 0: 
+            return x,y
+        coefficient = self.rays * tan( random.random()*pi*self.rays ) / r2
         return  coefficient * cos(x), coefficient * sin(y)
 
 class Blade(Transform):
@@ -552,7 +581,14 @@ class Fan2(Transform):
             return r * sin(theta - self.fan_p1/2), r * cos(theta - self.fan_p1/2)
         else:
             return r * sin(theta + self.fan_p1/2), r * sin(theta + self.fan_p1/2)
-    
+
+class Stutter(Transform):    
+    def __init__(self, params={}):
+        super(Stutter, self).__init__(params)
+        self.seteither('stutter', params, random.uniform(2,10))
+
+    def transform(self, x, y):
+        return x + int(x*self.stutter)/self.stutter, y + int(y*self.stutter)/self.stutter
  
 # Noise injection
 class RandomMove(Transform):
@@ -789,12 +825,11 @@ STEEP3 = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(params={'rot
 STEEP4 = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate(params={'rotate': 2.0/360*2*pi}))]})
 STEEP = Sequence(colour_weight=0.01, 
     params={'sequence':
-            [(1.0, VERTICAL), (1.0, Rotate(rotate_range=(0.5/360*2*pi, 2.5/360*2*pi))), (1.0, Scale(scale_range=(0.05,0.6)))],
-        'red': 0.75,
-        'green': 0.75,
-        'blue': 0.75
+            [(1.0, VERTICAL), (1.0, Rotate(rotate_range=(-2.5/360*2*pi, 2.5/360*2*pi))), (1.0, Scale(scale_range=(0.05,0.5))), (1.0, Stutter())]
+        # 'red': 0.75,
+        # 'green': 0.75,
+        # 'blue': 0.75
     })
-# STEEP = Sequence(params={'sequence':[(1.0, VERTICAL), (1.0, Rotate())]})
 RayMod = Sequence(colour_weight=0.75, params={'sequence':[(1.0, Rays()), (1.0, Rotate())]})
 # TRANSFORM_CHOICES = [STEEP, STEEP, STEEP, CHOICE1, CHOICE1B, CHOICE2, CHOICE3,  CHOICE1, CHOICE1B, CHOICE2, CHOICE3]
 
@@ -807,7 +842,7 @@ STEEP5 = Sequence(#colour_weight=0.1,
         # 'green': 0.75,
         # 'blue': 0.75
     })
-#TRANSFORM_CHOICES = [STEEP5, STEEP5, STEEP5, CHOICE1, CHOICE1B, CHOICE2, CHOICE3,  CHOICE1, CHOICE1B, CHOICE2, CHOICE3, Swap(), Swap()]
+# TRANSFORM_CHOICES = [STEEP5, STEEP5, STEEP5, CHOICE1, CHOICE1B, CHOICE2, CHOICE3,  CHOICE1, CHOICE1B, CHOICE2, CHOICE3, Swap(), Swap()]
 
 SLAT = Sequence(
     params={'sequence':
@@ -829,7 +864,7 @@ YYY = Sequence(params={'sequence':[(1.0, Sinusoidal()), (1.0, Scale(scale_range=
 YYZ = Sequence(params={'sequence':[(1.0, Spherical()), (1.0, Scale(scale_range=(0.1, 1.0))), (1.0, Translate())]})
 XYZ = Sequence(params={'sequence':[(1.0, YYZ), (1.0, Disc())]})
 ZYX = Sequence(params={'sequence':[(1.0, XXY), (1.0, Waves()), (1.0, Translate())]})
-# TRANSFORM_CHOICES = [CHOICE1, CHOICE1B, CHOICE2, CHOICE3, YYW, YYX, YYY, YYZ]
+# TRANSFORM_CHOICES = [CHOICE1, CHOICE1B, CHOICE2, CHOICE3, YYY, YYY]
 # TRANSFORM_CHOICES = [VERTICAL, VERTICAL, VERTICAL, CHOICE2, YYW, YYW, YYY, YYY]
 
 # XXY = Sequence(params={'sequence':[(1.0, Spherical()), (1.0, Scale(scale_range=(0.25, 0.50)))]})
@@ -844,20 +879,28 @@ ZYX = Sequence(params={'sequence':[(1.0, XXY), (1.0, Waves()), (1.0, Translate()
 #         # 'blue': 0.25
 #     })
 
-SKIPMOD = Sequence(params={'sequence':[(1.0, RectangleSkip()), (1.0, Scale()), (1.0, Translate())]})
+SKIPMOD = Sequence(params={'sequence':[(1.0, RectangleSkip()), (1.0, Scale(scale_range=(0.3,1.0))), (1.0, Translate())]})
 SKIP1 = Sequence(params={'sequence':[(1.0, RectangleSkip()), (1.0, SKIPMOD), (1.0, SKIPMOD)]})
 SKIP2 = Sequence(params={'sequence':[(1.0, SKIPMOD), (1.0, SKIPMOD)]})
 SKIP3 = Sequence(params={'sequence':[(1.0, RectangleSkip()), (1.0, SKIPMOD)]})
 
-BPX = Sequence(params={'sequence':[(1.0, BentParams()), (1.0, Translate())]})
-TRANSFORM_CHOICES = [RectangleSkip(), SKIP1, SKIP2, SKIP3, BentParams(), BentParams()]
+BPX = Sequence(params={'sequence':[(1.0, Stutter()), (1.0, Translate())]})
+BPS = Sequence(params={'sequence':[(1.0, STEEP), (1.0, Stutter())]})
+# TRANSFORM_CHOICES = [BPX, SKIPMOD, SKIP1, SKIP2, SKIP3]
+
+LW1 = Sequence(params={'sequence':[(1.0, Linear()), (1.0, Moebius()), (1.0, Linear())]})
+LW2 = Sequence(params={'sequence':[(1.0, Linear()), (1.0, Sinusoidal()), (1.0, Linear())]})
+# TRANSFORM_CHOICES = [LW1, Moebius(), Spherical()]
+TRANSFORM_CHOICES = [Spherical(), Moebius()]
 
 
 def generate_ifs():
-    ifs = IFS()
+    ifs = IFS(d=3.0)
+    p = Palette.from_file('/Users/efredine/Pictures/Vancouver/_MG_4051.ptl') #blue and gold
+    # p = Palette.from_file('/Users/efredine/Pictures/Vancouver/_MG_4306.ptl') #subdued
     for n in range(NUM_TRANSFORMS):
         transform = random.choice(TRANSFORM_CHOICES)
-        ifs.add(transform.get_new_transform())
+        ifs.add(transform.get_new_transform(params={'palette': p}))
     return ifs
       
 if __name__ == "__main__":
