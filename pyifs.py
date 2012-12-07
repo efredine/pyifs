@@ -890,8 +890,8 @@ BPS = Sequence(params={'sequence':[(1.0, STEEP), (1.0, Stutter())]})
 
 LW1 = Sequence(params={'sequence':[(1.0, Linear()), (1.0, Moebius()), (1.0, Linear())]})
 LW2 = Sequence(params={'sequence':[(1.0, Linear()), (1.0, Sinusoidal()), (1.0, Linear())]})
-# TRANSFORM_CHOICES = [LW1, Moebius(), Spherical()]
-TRANSFORM_CHOICES = [Spherical(), Moebius()]
+TRANSFORM_CHOICES = [LW1, Moebius(), Spherical()]
+# TRANSFORM_CHOICES = [Spherical(), Moebius()]
 
 
 def generate_ifs():

@@ -36,6 +36,7 @@ def get_file_name(path):
     
 def main():
     for line in sys.stdin:
+        print line
         path, color_list = line.split()
         theme = get_theme(color_list.split(','))
         p = Palette(*theme)
